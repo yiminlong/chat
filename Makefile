@@ -1,7 +1,7 @@
 all: client server
 
 client: client.c
-	gcc -o client client.c
+	gcc -pthread -o client client.c
 
 server: server.c
-	gcc -o server server.c
+	gcc -pthread -o server server.c
