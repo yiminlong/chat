@@ -2,12 +2,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <stdint.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
 #define DEFAULT_PORT 4485
 #define MAX_PENDING 10
-#define BUFFER_SIZE 20
+#define BUFFER_SIZE 100
 
 #define TRUE 1
 #define FALSE 0
@@ -16,6 +19,8 @@ static int quit;
 
 void interrupt(int signal_type);
 void *handle_client(void *_sd);
+void parse_input(const char *input_buffer, int input_buffer_size,
+		 char *output_buffer, int output_buffer_size);
 
 int main() {
   
@@ -23,7 +28,6 @@ int main() {
   int port, result, return_code;
   struct sockaddr_in server_addr;
   pthread_t client_thread;
-  size_t client_size, bytes_sent;
   struct sigaction handler;
 
   port = DEFAULT_PORT;
@@ -98,18 +102,19 @@ int main() {
 
 void *handle_client(void *_sd) {
   char receive_buffer[BUFFER_SIZE];
+  char send_buffer[BUFFER_SIZE];
   size_t bytes_received;
-  long sd = (long)_sd;
+  long sd;
 
-  /* Echo back anything received from the client. */
+  sd = (long)_sd;
+
   while (quit == FALSE) {
     memset(receive_buffer, 0, BUFFER_SIZE);
     bytes_received = recv(sd, receive_buffer, BUFFER_SIZE - 1, 0);
     if (bytes_received > 0) {
-      printf("received: %s\n", receive_buffer);
+      parse_input(receive_buffer, BUFFER_SIZE, send_buffer, BUFFER_SIZE);
+      send(sd, send_buffer, strlen(send_buffer), 0);
     }
-
-    send(sd, receive_buffer, bytes_received, 0);
   }
 
   close(sd);
@@ -117,8 +122,18 @@ void *handle_client(void *_sd) {
   return 0;
 }
 
+void parse_input(const char *input_buffer, int input_buffer_size,
+		 char *output_buffer, int output_buffer_size) {
 
-/* Signal interrupt handler for SIGINT. Sets the quit flag to true
+  if (strncmp(input_buffer, "LOGIN", 5) == 0) {
+    strncpy(output_buffer, "OK", output_buffer_size - 1);
+  } else {
+    strncpy(output_buffer, "ERROR unknown command", output_buffer_size - 1);
+  }
+}
+
+
+/* Signal Interrupt handler for SIGINT. Sets the quit flag to true
    which gives time to cleanup before terminating. */
 void interrupt(int signal_type) {
   quit = TRUE;
