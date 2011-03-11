@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <pthread.h>
 #include <signal.h>
@@ -9,11 +10,8 @@
 
 #define DEFAULT_PORT	4485
 #define BUFFER_SIZE	100
-#define TRUE		1
-#define FALSE		0
 
-
-static int quit;
+static bool quit;
 void *display_responses(void *_sd);
 void interrupt(int signal_type);
 
@@ -26,7 +24,7 @@ int main() {
   struct sigaction handler;
   const char *server = "127.0.0.1";
 
-  quit = FALSE;
+  quit = false;
   port = DEFAULT_PORT;
 
   sd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -76,7 +74,7 @@ int main() {
   /* Read input from standard input and send it to the server. */
   memset(send_buffer, 0, BUFFER_SIZE);
 
-  while (quit == FALSE) {
+  while (quit == false) {
     /* Place fgets() last in the while loop since it is a blocking function.
        If a signal interrupts it, it will check the quit flag before sending
        its buffer. This prevents it from sending the last buffer twice when
@@ -100,11 +98,11 @@ void *display_responses(void *_sd) {
   size_t bytes_received;
   long sd = (long)_sd;
 
-  while (quit == FALSE) {
+  while (quit == false) {
     memset(receive_buffer, 0, BUFFER_SIZE);
     bytes_received = recv(sd, receive_buffer, BUFFER_SIZE - 1, 0);
     if (bytes_received > 0) {
-      printf("received: %s\n", receive_buffer);
+      printf("%s\n", receive_buffer);
     }
   }
 
@@ -114,5 +112,5 @@ void *display_responses(void *_sd) {
 /* Signal interrupt handler for SIGINT. Sets the quit flag to true
    which gives time to cleanup before terminating. */
 void interrupt(int signal_type) {
-  quit = TRUE;
+  quit = true;
 }

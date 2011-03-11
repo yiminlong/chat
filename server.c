@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
@@ -8,19 +9,17 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
+#include "login.h"
+#include "chatroom.h"
+
 #define DEFAULT_PORT 4485
 #define MAX_PENDING 10
 #define BUFFER_SIZE 100
 
-#define TRUE 1
-#define FALSE 0
-
-static int quit;
+static bool quit;
 
 void interrupt(int signal_type);
 void *handle_client(void *_sd);
-void parse_input(const char *input_buffer, int input_buffer_size,
-		 char *output_buffer, int output_buffer_size);
 
 int main() {
   
@@ -31,7 +30,10 @@ int main() {
   struct sigaction handler;
 
   port = DEFAULT_PORT;
-  quit = FALSE;
+  quit = false;
+
+  login_init();
+  chatroom_init();
 
   sd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (sd < 0) {
@@ -76,12 +78,12 @@ int main() {
     exit(1);
   }
 
-  while (quit == FALSE) {
+  while (quit == false) {
 
     client_sd = accept(sd, 0, 0);
     if (client_sd < 0) {
       perror("accept");
-      quit = TRUE;
+      quit = true;
       break;
     }
 
@@ -91,7 +93,7 @@ int main() {
     if (return_code != 0) {
       fprintf(stderr, "error: unable to create new thread. return code: %d\n", return_code);
       close(client_sd);
-      quit = TRUE;
+      quit = true;
       break;
     }
   }
@@ -103,38 +105,78 @@ int main() {
 void *handle_client(void *_sd) {
   char receive_buffer[BUFFER_SIZE];
   char send_buffer[BUFFER_SIZE];
+  char error_buffer[BUFFER_SIZE];
+  char temp_buffer[BUFFER_SIZE];
   size_t bytes_received;
   long sd;
+  char *saveptr;
+  char *token;
+  int result;
+
 
   sd = (long)_sd;
+  saveptr = 0;
 
-  while (quit == FALSE) {
+  while (quit == false) {
+    saveptr = 0;
     memset(receive_buffer, 0, BUFFER_SIZE);
     bytes_received = recv(sd, receive_buffer, BUFFER_SIZE - 1, 0);
     if (bytes_received > 0) {
-      parse_input(receive_buffer, BUFFER_SIZE, send_buffer, BUFFER_SIZE);
+
+      /* Mega function */
+      if (strncmp(receive_buffer, "LOGIN", 5) == 0) {
+
+	/* TODO Handle case where no name is given */
+	/* Is this needed? */
+	strncpy(temp_buffer, receive_buffer, BUFFER_SIZE - 1);
+
+	strtok_r(temp_buffer, " ", &saveptr);
+	token = strtok_r(0, " ", &saveptr);
+
+	result = login(token, sd, error_buffer, BUFFER_SIZE);
+	if (result != sd) {
+	  snprintf(send_buffer, BUFFER_SIZE - 1, "ERROR %s", error_buffer);
+
+	} else {
+
+	  strncpy(send_buffer, "OK", BUFFER_SIZE - 1);
+	}
+      
+      } else if (strncmp(receive_buffer, "LOGOUT", 6) == 0) {
+	break;
+
+      } else if (strncmp(receive_buffer, "MSG", 3) == 0) {
+
+      } else if (strncmp(receive_buffer, "JOIN", 4) == 0) {
+
+	strncpy(temp_buffer, receive_buffer, BUFFER_SIZE - 1);
+
+	strtok_r(temp_buffer, " ", &saveptr);
+	token = strtok_r(0, " ", &saveptr);
+
+	/* token should be the name of the chatroom
+	   TODO verify that it starts with a pound sign */
+	chatroom_join(sd, token);
+
+      } else if (strncmp(receive_buffer, "PART", 4) == 0) {
+
+      } else {
+	strncpy(send_buffer, "ERROR unknown command", BUFFER_SIZE - 1);
+      }
+
       send(sd, send_buffer, strlen(send_buffer), 0);
     }
   }
 
+  logout(sd);
   close(sd);
 
   return 0;
-}
-
-void parse_input(const char *input_buffer, int input_buffer_size,
-		 char *output_buffer, int output_buffer_size) {
-
-  if (strncmp(input_buffer, "LOGIN", 5) == 0) {
-    strncpy(output_buffer, "OK", output_buffer_size - 1);
-  } else {
-    strncpy(output_buffer, "ERROR unknown command", output_buffer_size - 1);
-  }
 }
 
 
 /* Signal Interrupt handler for SIGINT. Sets the quit flag to true
    which gives time to cleanup before terminating. */
 void interrupt(int signal_type) {
-  quit = TRUE;
+  quit = true;
 }
